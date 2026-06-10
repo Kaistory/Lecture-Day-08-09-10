@@ -10,6 +10,7 @@ from __future__ import annotations
 import csv
 import hashlib
 import re
+from datetime import datetime
 from pathlib import Path
 from typing import Any, Dict, List, Tuple
 
@@ -20,15 +21,55 @@ ALLOWED_DOC_IDS = frozenset(
         "sla_p1_2026",
         "it_helpdesk_faq",
         "hr_leave_policy",
+        # Sprint 1: nguồn hợp lệ bị baseline bỏ sót — grading gq_d10_10 cần nó.
+        "access_control_sop",
     }
 )
 
 _ISO_DATE = re.compile(r"^\d{4}-\d{2}-\d{2}$")
 _DMY_SLASH = re.compile(r"^(\d{2})/(\d{2})/(\d{4})$")
+# exported_at dạng "YYYY/MM/DD..." (slash) — phải đổi sang ISO để freshness_check parse được.
+_SLASH_DATE_PREFIX = re.compile(r"^(\d{4})/(\d{2})/(\d{2})(.*)$")
+# doc_id export hỏng rõ ràng (catalog cũ / id lỗi) — tách khỏi nguồn "chưa đăng ký" để alert đúng owner.
+_MALFORMED_DOC_ID = re.compile(r"^(invalid_doc_|legacy_)")
 
 
 def _norm_text(s: str) -> str:
     return " ".join((s or "").strip().split()).lower()
+
+
+# Cụm meta-leak rò rỉ từ tầng export (không phải nội dung policy thật).
+_META_LEAK = ("effective_date không đồng nhất", "Nội dung có thể bị")
+
+
+def _has_repeated_run(text: str) -> bool:
+    """Phát hiện corruption lặp từ/cụm liền kề (vd '... làm việc làm việc làm việc ...')."""
+    w = text.split()
+    for i in range(len(w) - 1):
+        if w[i] == w[i + 1]:
+            return True
+    for i in range(len(w) - 3):
+        if w[i] == w[i + 2] and w[i + 1] == w[i + 3]:  # cụm 2 từ lặp lại
+            return True
+    return False
+
+
+def _normalize_exported_at(raw: str) -> Tuple[str, str]:
+    """
+    Chuẩn hoá exported_at sang ISO (đổi 'YYYY/MM/DD' → 'YYYY-MM-DD', giữ phần giờ).
+    Trả về (iso_value, error_reason). exported_at rỗng được cho qua (không chặn).
+    """
+    s = (raw or "").strip()
+    if not s:
+        return "", ""
+    m = _SLASH_DATE_PREFIX.match(s)
+    if m:
+        s = f"{m.group(1)}-{m.group(2)}-{m.group(3)}{m.group(4)}"
+    try:
+        datetime.fromisoformat(s.replace("Z", "+00:00"))
+    except ValueError:
+        return "", "invalid_exported_at_format"
+    return s, ""
 
 
 def _stable_chunk_id(doc_id: str, chunk_text: str, seq: int) -> str:
@@ -70,11 +111,15 @@ def clean_rows(
     """
     Trả về (cleaned, quarantine).
 
-    Baseline (mở rộng theo narrative Day 10):
-    1) Quarantine: doc_id không thuộc allowlist (export lạ / catalog sai).
+    Baseline + mở rộng (Sprint 1–2). Rule mới đánh dấu [NEW]:
+    1) Quarantine doc_id ngoài allowlist — [NEW] tách reason malformed_doc_id vs unregistered_source.
     2) Chuẩn hoá effective_date sang YYYY-MM-DD; quarantine nếu không parse được.
-    3) Quarantine: chunk hr_leave_policy có effective_date < 2026-01-01 (bản HR cũ / conflict version).
-    4) Quarantine: chunk_text rỗng hoặc effective_date rỗng sau chuẩn hoá.
+    3) Quarantine chunk hr_leave_policy có effective_date < 2026-01-01 (bản HR cũ / conflict version).
+    3b) [NEW] Quarantine chunk hr_leave_policy chứa marker '10 ngày phép năm' bất kể ngày
+        (export gán nhầm ngày 2026 cho nội dung HR 2025).
+    4) Quarantine chunk_text rỗng hoặc effective_date rỗng sau chuẩn hoá.
+    4a) [NEW] Quarantine chunk nhiễu/hỏng (prefix 'Nội dung không rõ ràng' hoặc '!!!') — làm nhiễu top-k.
+    4b) [NEW] Chuẩn hoá exported_at sang ISO (YYYY/MM/DD → YYYY-MM-DD); quarantine nếu sai định dạng.
     5) Loại trùng nội dung chunk_text (giữ bản đầu).
     6) Fix stale refund: policy_refund_v4 chứa '14 ngày làm việc' → 7 ngày.
     """
@@ -90,7 +135,11 @@ def clean_rows(
         exported_at = raw.get("exported_at", "")
 
         if doc_id not in ALLOWED_DOC_IDS:
-            quarantine.append({**raw, "reason": "unknown_doc_id"})
+            # Sprint 2 rule mới: tách failure mode để observability/alert định tuyến đúng owner.
+            #  - malformed_doc_id: id export hỏng (invalid_doc_* / legacy_*) → bug ở hệ nguồn.
+            #  - unregistered_source: nguồn có cấu trúc nhưng chưa đăng ký contract → cần onboard.
+            reason = "malformed_doc_id" if _MALFORMED_DOC_ID.match(doc_id) else "unregistered_source"
+            quarantine.append({**raw, "reason": reason})
             continue
 
         eff_norm, eff_err = _normalize_effective_date(eff_raw)
@@ -111,8 +160,40 @@ def clean_rows(
             )
             continue
 
+        # Sprint 1: lọc theo ngày là CHƯA ĐỦ — nhiều chunk bản HR 2025 ("10 ngày phép năm")
+        # bị export gán nhầm effective_date 2026 nên vượt qua bộ lọc ngày ở trên.
+        # Quarantine theo marker nội dung, bất kể ngày, để bỏ bản phép năm cũ (conflict version).
+        if doc_id == "hr_leave_policy" and "10 ngày phép năm" in text:
+            quarantine.append(
+                {
+                    **raw,
+                    "reason": "stale_hr_annual_leave_marker",
+                    "effective_date_normalized": eff_norm,
+                }
+            )
+            continue
+
         if not text:
             quarantine.append({**raw, "reason": "missing_chunk_text"})
+            continue
+
+        # Sprint 2 rule mới: quarantine chunk export hỏng/nhiễu — bản sao méo của nội dung thật
+        # mang prefix "Nội dung không rõ ràng" hoặc marker "!!!". Chúng lọt dedup (prefix khác)
+        # và làm nhiễu top-k: đẩy chunk đúng ra khỏi top-5 (gq_d10_06 escalation "10 phút").
+        if "Nội dung không rõ ràng" in text or "!!!" in text:
+            quarantine.append({**raw, "reason": "low_quality_noise_chunk"})
+            continue
+
+        # Sprint 2 rule mới: quarantine chunk corruption — lặp từ/cụm liền kề (export lỗi)
+        # hoặc rò rỉ meta-note/truncation. Đây là bản méo của nội dung thật, làm phình index.
+        if _has_repeated_run(text) or any(p in text for p in _META_LEAK):
+            quarantine.append({**raw, "reason": "low_quality_corrupt_chunk"})
+            continue
+
+        # Sprint 2 rule mới: chuẩn hoá exported_at sang ISO (freshness_check cần parse được).
+        exp_norm, exp_err = _normalize_exported_at(exported_at)
+        if exp_err == "invalid_exported_at_format":
+            quarantine.append({**raw, "reason": exp_err, "exported_at_raw": exported_at})
             continue
 
         key = _norm_text(text)
@@ -137,7 +218,7 @@ def clean_rows(
                 "doc_id": doc_id,
                 "chunk_text": fixed_text,
                 "effective_date": eff_norm,
-                "exported_at": exported_at or "",
+                "exported_at": exp_norm or "",
             }
         )
 

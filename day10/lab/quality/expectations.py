@@ -112,5 +112,42 @@ def run_expectations(cleaned_rows: List[Dict[str, Any]]) -> Tuple[List[Expectati
         )
     )
 
+    # E7 [NEW]: đủ cả 5 nguồn hợp lệ trong cleaned (bắt lỗi nguồn bị quarantine nhầm,
+    # vd access_control_sop thiếu allowlist → gq_d10_10 không thể pass).
+    required_sources = {
+        "policy_refund_v4",
+        "sla_p1_2026",
+        "it_helpdesk_faq",
+        "hr_leave_policy",
+        "access_control_sop",
+    }
+    present = {(r.get("doc_id") or "").strip() for r in cleaned_rows}
+    missing = sorted(required_sources - present)
+    results.append(
+        ExpectationResult(
+            "all_required_sources_present",
+            len(missing) == 0,
+            "halt",
+            f"missing_sources={missing}",
+        )
+    )
+
+    # E8 [NEW]: exported_at đã chuẩn hoá ISO (freshness_check phụ thuộc parse được).
+    # warn — không chặn pipeline, nhưng cảnh báo freshness sẽ WARN nếu còn dạng slash.
+    non_iso_exported = [
+        r
+        for r in cleaned_rows
+        if (r.get("exported_at") or "").strip()
+        and not re.match(r"^\d{4}-\d{2}-\d{2}([T ].*)?$", (r.get("exported_at") or "").strip())
+    ]
+    results.append(
+        ExpectationResult(
+            "exported_at_iso",
+            len(non_iso_exported) == 0,
+            "warn",
+            f"non_iso_exported_at={len(non_iso_exported)}",
+        )
+    )
+
     halt = any(not r.passed and r.severity == "halt" for r in results)
     return results, halt

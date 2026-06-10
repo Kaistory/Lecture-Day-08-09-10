@@ -3,7 +3,7 @@
 
 version: "1.0"
 dataset: "kb_chunk_export"
-owner_team: "__TODO__"
+owner_team: "IT Knowledge Platform — Cleaning/Quality Owner (nhóm Day 10)"
 
 schema_cleaned:
   chunk_id:
@@ -32,11 +32,14 @@ quality_rules:
   - id: "no_stale_refund_window"
     description: "Không được để chunk policy refund chứa cửa sổ 14 ngày (lệch so với v4 = 7 ngày)"
     severity: "halt"
+  - id: "no_stale_hr_annual_leave"
+    description: "Không được để chunk hr_leave_policy chứa '10 ngày phép năm' (bản HR 2025; v2026 = 12 ngày)"
+    severity: "halt"
 
 freshness:
   measured_at: "publish"  # ingest | cleaned | publish
   sla_hours: 24
-  alert_channel: "__TODO__"
+  alert_channel: "#incident-p1"  # Slack — đồng bộ kênh sự cố trong sla_p1_2026
 
 canonical_sources:
   - path: "data/docs/policy_refund_v4.txt"
@@ -47,6 +50,8 @@ canonical_sources:
     doc_id: "it_helpdesk_faq"
   - path: "data/docs/hr_leave_policy.txt"
     doc_id: "hr_leave_policy"
+  - path: "data/docs/access_control_sop.txt"
+    doc_id: "access_control_sop"
 
 # Baseline allowlist export — nhóm mở rộng doc mới phải đồng bộ cleaning_rules + contract.
 allowed_doc_ids:
@@ -54,6 +59,7 @@ allowed_doc_ids:
   - sla_p1_2026
   - it_helpdesk_faq
   - hr_leave_policy
+  - access_control_sop  # Sprint 1: nguồn baseline bỏ sót, grading gq_d10_10 cần
 
 # Merit/Distinction: có thể đưa cutoff versioning vào env và tham chiếu ở đây (tránh hard-code trong code).
 policy_versioning:
