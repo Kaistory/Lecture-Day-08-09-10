@@ -1,9 +1,6 @@
 # Báo Cáo Cá Nhân — Lab Day 10: Data Pipeline & Observability
 
-> ⚠️ Đây là **bản mẫu đã điền bằng chứng thật** cho vai Cleaning/Quality Owner.
-> Mỗi thành viên copy thành `reports/individual/[ten_ban].md`, sửa "tôi" cho đúng phần mình làm.
-
-**Họ và tên:** ___________
+**Họ và tên:** Dương Quang Khải
 **Vai trò:** Cleaning & Quality Owner
 **Ngày nộp:** 2026-06-10
 **Độ dài yêu cầu:** 400–650 từ

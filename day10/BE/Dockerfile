@@ -12,8 +12,10 @@ WORKDIR /app
 # 1) Cài deps trước (tận dụng layer cache). lab cần torch/sentence-transformers/chromadb; BE cần fastapi.
 COPY lab/requirements.txt /app/lab/requirements.txt
 COPY BE/requirements.txt /app/BE/requirements.txt
+# Cài torch CPU-only TRƯỚC: trên Linux torch mặc định kéo cả CUDA (~vài GB). Container này chỉ chạy CPU.
 RUN pip install --upgrade pip \
- && pip install -r /app/lab/requirements.txt -r /app/BE/requirements.txt
+ && pip install --no-cache-dir --index-url https://download.pytorch.org/whl/cpu torch \
+ && pip install --no-cache-dir -r /app/lab/requirements.txt -r /app/BE/requirements.txt
 
 # 2) Copy mã nguồn (lab modules + BE app). .dockerignore loại .venv/.env/chroma_db/artifacts.
 COPY lab /app/lab
