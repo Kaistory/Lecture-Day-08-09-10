@@ -37,6 +37,14 @@ def _new_run_id() -> str:
     return f"run_{datetime.now(timezone.utc):%Y%m%d_%H%M%S}"
 
 
+def _rel(p) -> str:
+    """relative_to(lab ROOT) an toàn — fallback str(p) nếu path nằm ngoài lab."""
+    try:
+        return str(p.relative_to(lab_etl.ROOT))
+    except ValueError:
+        return str(p)
+
+
 def run_pipeline(
     run_id: Optional[str] = None,
     *,
@@ -115,25 +123,33 @@ def run_pipeline(
                 "metrics": metrics,
                 "phases": phases,
                 "expectations": expectations,
+                "artifacts": artifacts,
                 "message": "Embedding thất bại (kiểm tra chromadb/sentence-transformers).",
             },
             http_status=500,
         )
     phases["embedding"] = "passed"
 
+    # Reset cache collection để eval/grading/chat sau đó đọc đúng index vừa embed (tránh handle stale).
+    try:
+        from app.services import eval_service
+        eval_service.reset_collection_cache()
+    except Exception:
+        pass
+
     # 5) Manifest + freshness (giống etl_pipeline.cmd_run)
     latest_exported = max((r.get("exported_at") or "" for r in cleaned), default="") if cleaned else ""
     manifest = {
         "run_id": run_id,
         "run_timestamp": datetime.now(timezone.utc).isoformat(),
-        "raw_path": str(raw_path.relative_to(lab_etl.ROOT)),
+        "raw_path": _rel(raw_path),
         "raw_records": raw_count,
         "cleaned_records": len(cleaned),
         "quarantine_records": len(quarantine),
         "latest_exported_at": latest_exported,
         "no_refund_fix": bool(no_refund_fix),
         "skipped_validate": bool(skip_validate and halt),
-        "cleaned_csv": str(cleaned_path.relative_to(lab_etl.ROOT)),
+        "cleaned_csv": _rel(cleaned_path),
         "chroma_path": config.CHROMA_DB_PATH,
         "chroma_collection": config.CHROMA_COLLECTION,
     }

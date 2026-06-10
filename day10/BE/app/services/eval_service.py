@@ -17,24 +17,35 @@ from app import config  # noqa: F401 — side effect import order
 
 import etl_pipeline as lab_etl
 
-_COLLECTION = None  # cache
+# Cache 3 tầng: client + embedding model (NẶNG, giữ qua reset) tách khỏi collection handle (rẻ).
+_CLIENT = None
+_EMB = None
+_COLLECTION = None
 
 
 class CollectionUnavailable(Exception):
     pass
 
 
+def _ensure_client():
+    """Khởi tạo (1 lần) Chroma client + embedding model — phần nặng, không reload khi reset cache."""
+    global _CLIENT, _EMB
+    if _CLIENT is None or _EMB is None:
+        try:
+            import chromadb
+            from chromadb.utils import embedding_functions
+        except ImportError as e:  # pragma: no cover
+            raise CollectionUnavailable(f"Thiếu chromadb/sentence-transformers: {e}")
+        _CLIENT = chromadb.PersistentClient(path=config.CHROMA_DB_PATH)
+        _EMB = embedding_functions.SentenceTransformerEmbeddingFunction(model_name=config.EMBEDDING_MODEL)
+    return _CLIENT, _EMB
+
+
 def _get_collection():
     global _COLLECTION
     if _COLLECTION is not None:
         return _COLLECTION
-    try:
-        import chromadb
-        from chromadb.utils import embedding_functions
-    except ImportError as e:  # pragma: no cover
-        raise CollectionUnavailable(f"Thiếu chromadb/sentence-transformers: {e}")
-    client = chromadb.PersistentClient(path=config.CHROMA_DB_PATH)
-    emb = embedding_functions.SentenceTransformerEmbeddingFunction(model_name=config.EMBEDDING_MODEL)
+    client, emb = _ensure_client()
     try:
         _COLLECTION = client.get_collection(name=config.CHROMA_COLLECTION, embedding_function=emb)
     except Exception as e:
@@ -45,7 +56,7 @@ def _get_collection():
 
 
 def reset_collection_cache() -> None:
-    """Gọi sau khi re-embed để lần query sau đọc handle mới (nếu cần)."""
+    """Chỉ bỏ collection handle (đọc lại index mới sau re-embed). GIỮ client + model đã nạp."""
     global _COLLECTION
     _COLLECTION = None
 

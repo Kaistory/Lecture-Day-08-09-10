@@ -26,10 +26,18 @@ export const EvalModel = {
 }
 
 export const ArtifactsModel = {
-  // API 5 — liệt kê + tải
+  // API 5 — liệt kê + tải + preview
   list: () => http.get('/api/v1/artifacts'),
   url: (type, filename) => `${API_BASE}/api/v1/artifacts/${type}/${encodeURIComponent(filename)}`,
   fetchJson: (type, filename) => http.get(`/api/v1/artifacts/${type}/${encodeURIComponent(filename)}`),
+  // Trả raw text (CSV/JSONL/log) hoặc JSON pretty cho modal preview
+  async fetchText(type, filename) {
+    const res = await fetch(this.url(type, filename))
+    if (!res.ok) throw new Error(`HTTP ${res.status}`)
+    const ct = res.headers.get('content-type') || ''
+    if (ct.includes('application/json')) return JSON.stringify(await res.json(), null, 2)
+    return res.text()
+  },
 }
 
 export const ChatModel = {

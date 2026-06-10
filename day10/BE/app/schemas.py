@@ -67,9 +67,10 @@ class PipelineRunResponse(BaseModel):
 
 
 class FreshnessResponse(BaseModel):
-    run_id: str
+    run_id: Optional[str] = None
     timestamp: Optional[str] = None
     overall_status: str
+    overall_detail: Optional[Dict[str, Any]] = None
     sla_hours: float
     details: List[Dict[str, Any]]
 

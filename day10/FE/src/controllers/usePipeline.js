@@ -1,5 +1,5 @@
 // CONTROLLER — điều phối chạy pipeline + mô phỏng tiến trình stepper (real-time feedback).
-import { useCallback, useRef, useState } from 'react'
+import { useCallback, useEffect, useRef, useState } from 'react'
 import { PipelineModel } from '../models/api.js'
 import { ApiError } from '../models/apiClient.js'
 import { useApp } from './AppContext.jsx'
@@ -24,6 +24,9 @@ export function usePipeline() {
     timers.current.forEach(clearTimeout)
     timers.current = []
   }
+
+  // Dọn timer khi unmount (tránh setState trên component đã rời trang).
+  useEffect(() => () => timers.current.forEach(clearTimeout), [])
 
   // Hiển thị spinner tuần tự để người dùng thấy hệ thống đang chạy (BE trả 1 lần khi xong).
   const startProgressAnimation = useCallback(() => {

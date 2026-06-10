@@ -31,8 +31,8 @@ function Sources({ sources, answer, onOpen }) {
   sources.forEach((s) => { if (s.doc_id && !seen.has(s.doc_id)) { seen.add(s.doc_id); uniq.push(s) } })
   return (
     <div className="src-chips">
-      {uniq.map((s, i) => (
-        <span className="src-chip click" key={i} title={`Bấm để xem file gốc · ${s.preview}`}
+      {uniq.map((s) => (
+        <span className="src-chip click" key={s.doc_id} title={`Bấm để xem file gốc · ${s.preview}`}
           onClick={() => onOpen(s.doc_id, keyTerms(answer))}>
           📄 <b>{s.doc_id}</b>{s.effective_date ? ` · ${s.effective_date}` : ''}
         </span>
@@ -89,13 +89,13 @@ export default function Chat() {
       {showCompare && (
         <div className="panel" style={{ marginBottom: 16 }}>
           <div className="section-title">So sánh cải tiến · inject lỗi → trả lời → rerun sạch → trả lời</div>
-          <div className="row" style={{ marginBottom: 10 }}>
-            <input className="chat-input" style={{ flex: 1, padding: '11px 14px', background: 'var(--bg-2)', border: '1px solid var(--border)', borderRadius: 8, color: 'var(--text)' }}
-              value={cmpText} onChange={(e) => setCmpText(e.target.value)} placeholder="Câu hỏi để so sánh…" />
-            <button className="btn primary" onClick={() => compare(cmpText)} disabled={comparing}>
+          <form className="chat-input" style={{ paddingTop: 0, marginBottom: 10 }}
+            onSubmit={(e) => { e.preventDefault(); compare(cmpText) }}>
+            <input value={cmpText} onChange={(e) => setCmpText(e.target.value)} placeholder="Câu hỏi để so sánh…" disabled={comparing} />
+            <button className="btn primary" type="submit" disabled={comparing || !cmpText.trim()}>
               {comparing ? <><span className="spinner" /> Đang chạy 2 pipeline…</> : '⚖ So sánh'}
             </button>
-          </div>
+          </form>
           {compareErr && <div className="err">⚠ {compareErr}</div>}
           {comparing && <p className="muted">Inject corruption → hỏi → rerun idempotent → hỏi. Mất ~15–30s (2 lần embed + 2 LLM)…</p>}
           {comparison && (

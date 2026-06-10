@@ -26,7 +26,12 @@ async function request(path, { method = 'GET', body } = {}) {
   const ct = res.headers.get('content-type') || ''
   const data = ct.includes('application/json') ? await res.json() : await res.text()
   if (!res.ok) {
-    const msg = (data && data.message) || `HTTP ${res.status}`
+    // BE halt/lỗi trả {message,...}; FastAPI validation trả {detail:[{msg}]} hoặc {detail:"..."}
+    const detail = data && data.detail
+    const msg =
+      (data && data.message) ||
+      (Array.isArray(detail) ? detail[0]?.msg : detail) ||
+      `HTTP ${res.status}`
     throw new ApiError(msg, res.status, data)
   }
   return data

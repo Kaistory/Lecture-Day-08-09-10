@@ -8,6 +8,7 @@ from pydantic import BaseModel, Field
 
 from app.services import chat_service
 from app.services.eval_service import CollectionUnavailable
+from app.services.pipeline_service import PipelineHalt
 
 router = APIRouter(prefix="/api/v1/chat", tags=["6 · Chatbot"])
 
@@ -70,3 +71,5 @@ def compare(req: ChatRequest):
         return chat_service.compare(req.message, top_k=req.top_k)
     except CollectionUnavailable as e:
         return JSONResponse(status_code=409, content={"status": "error", "message": str(e)})
+    except PipelineHalt as h:
+        return JSONResponse(status_code=h.http_status, content=h.payload)

@@ -20,7 +20,7 @@ export function useChat() {
     setSending(true)
     try {
       const res = await ChatModel.send({ message: q, top_k: 4 })
-      setMessages((m) => [...m, { role: 'bot', answer: res.answer, sources: res.sources || [], mode: res.mode, model: res.model }])
+      setMessages((m) => [...m, { role: 'bot', answer: res.answer, sources: res.sources || [], mode: res.mode, model: res.model, context_stale: res.context_stale || [] }])
     } catch (e) {
       setMessages((m) => [...m, { role: 'bot', answer: `⚠ ${e.message}`, sources: [], mode: 'error' }])
     } finally {
