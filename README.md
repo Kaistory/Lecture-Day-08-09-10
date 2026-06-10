@@ -1,4 +1,4 @@
-# AI in Action — Lecture Slides: Day 08 · 09 · 10
+# AI in Action — Lecture Slides: Day 08 · 09 · 10 
 
 > **Course:** AI in Action – Phase 1 (Nền tảng)
 > **Topic block:** Từ RAG đến Multi-Agent đến Data Pipeline — xây dựng hệ AI vận hành thực tế
