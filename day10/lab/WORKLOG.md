@@ -197,19 +197,93 @@ freshness, kịch bản inject, hạn chế).
 
 **Còn cần nhóm tự làm:** điền tên/email thành viên trong group_report; mỗi người viết individual report của mình.
 
-### Sprint 3 — Inject corruption & before/after
-- [ ] `python etl_pipeline.py run --run-id inject-bad --no-refund-fix --skip-validate`
-- [ ] Lưu 2 file eval so sánh (before/after) + quality report.
+---
 
-### Sprint 4 — Monitoring + docs
-- [ ] Freshness check, runbook, 3 docs.
-- [ ] `python grading_run.py` lần cuối → 10 câu pass.
-- [ ] group_report.md + individual reports.
+## 2026-06-10 — Bổ sung Merit: LLM-judge eval ✅
 
-### Lệnh kiểm tra (sau khi sửa)
+- Thêm `openai>=1.40.0` vào `requirements.txt`; cài `openai` 2.41.0 trong venv.
+- Viết `eval_llm_judge.py`: mỗi câu retrieve top-k → (1) LLM trả lời CHỈ từ context → (2) LLM-giám khảo
+  chấm theo grading_criteria + must_not_contain → JSON `{verdict,score,faithful,reason}`. Model `gpt-4o-mini`
+  (đổi qua env `LLM_JUDGE_MODEL`).
+- Chạy 10 câu grading → **10/10 pass, score 5/5, faithful=True** → `artifacts/eval/llm_judge.jsonl`.
+  Câu trả lời đúng: refund "7 ngày", escalation "10 phút", HR "12 ngày" (không lẫn bản stale).
+- Cập nhật quality_report + group_report (mục hạn chế → đã có LLM-judge).
+- Lưu ý: bước này gọi OpenAI API (gửi context ra ngoài), cần `OPENAI_API_KEY` trong `.env` (gitignored).
+
+**File thay đổi (đợt Merit này — CHƯA commit):**
+- `eval_llm_judge.py` (mới) · `requirements.txt` (M, +openai) · `docs/quality_report_template.md` (M)
+  · `reports/group_report.md` (M).
+- Output `artifacts/eval/llm_judge.jsonl` — gitignored.
+- Commit chính 5-phase trước đó: `ba35929` (đã push `origin/main`). Đợt LLM-judge này nằm SAU commit đó,
+  đang chờ quyết định commit.
+
+**Tái lập:**
 ```powershell
-.venv\Scripts\python.exe etl_pipeline.py run                               # phải exit 0
-.venv\Scripts\python.exe eval_retrieval.py --out artifacts/eval/eval_after_fix.csv
-.venv\Scripts\python.exe grading_run.py --out artifacts/eval/grading_run.jsonl
+.venv\Scripts\python.exe eval_llm_judge.py --out artifacts/eval/llm_judge.jsonl
+# đổi model: --model gpt-4o  |  hoặc đặt LLM_JUDGE_MODEL trong .env
 ```
-Mục tiêu: 10 câu `gq_d10_01..10` đều `contains_expected=true`, `hits_forbidden=false`.
+
+> **Lưu ý lịch sử:** block TODO Sprint 3/4 ban đầu (Phase 1) đã hoàn thành — xem các mục
+> "Phase 3/4 hoàn thành" ở trên. Giữ phần dưới làm tham chiếu lệnh nhanh.
+
+### Lệnh kiểm tra nhanh (tái lập trạng thái tốt)
+```powershell
+.venv\Scripts\python.exe etl_pipeline.py run                                  # exit 0, 8/8 expectation pass
+.venv\Scripts\python.exe eval_retrieval.py --out artifacts/eval/eval_after_fix.csv
+.venv\Scripts\python.exe grading_run.py --out artifacts/eval/grading_run.jsonl # grading 10/10
+.venv\Scripts\python.exe eval_llm_judge.py --out artifacts/eval/llm_judge.jsonl # Merit, 10/10 (cần OPENAI_API_KEY)
+```
+Mục tiêu: 10 câu `gq_d10_01..10` đều `contains_expected=true`, `hits_forbidden=false`; LLM-judge verdict=pass.
+
+### Trạng thái commit
+- `ba35929` (đã push `origin/main`): toàn bộ 5-phase (code + docs + reports + WORKLOG).
+- **Chưa commit:** đợt Merit LLM-judge + BE + FE + Docker (xem dưới).
+
+---
+
+## 2026-06-10 — Mở rộng: BE (FastAPI) + FE (React MVC) + Docker ✅
+
+**BE Orchestrator** (`day10/BE`, FastAPI) — bọc pipeline thành 5 REST API, tái dùng trực tiếp module lab:
+- API: `POST /pipeline/run` (+422 halt), `GET /monitoring/freshness` (per-source), `POST /eval/retrieval`,
+  `POST /eval/grading`, `GET /artifacts/{type}/{file}` (+ list). Swagger `/docs` có JSON mẫu. CORS bật.
+- Cấu trúc: config (cầu nối sys.path tới lab) · schemas · services (pipeline/freshness/eval) · routers.
+- Đã test end-to-end: pipeline 247/32/215, grading 10/10, freshness 5 nguồn, halt→422. Cần `fastapi` (đã cài venv lab).
+
+**FE Dashboard** (`day10/FE`, React + Vite, MVC) — dark-mode dashboard:
+- MVC: `models/` (api client) · `controllers/` (hooks + AppContext) · `views/` (layout/components/pages).
+- 5 trang: Dashboard, Pipeline Runner (stepper + toggles + terminal halt), Observability (SLA bars + quarantine),
+  Evaluation (A/B + grading + score ring + confetti), Artifacts (file explorer).
+- Trang tĩnh `public/scenario.html`: use case + nguồn DB/API/file, inject→freshness/volume, rerun idempotent,
+  so sánh agent trước/sau khớp run_id. Build OK (57 modules), verify render qua Playwright (kết nối BE).
+
+**Docker** (`day10/`): `docker-compose.yml` (be:8000 + fe:3000), `BE/Dockerfile`, `FE/Dockerfile` (+nginx),
+`.dockerignore`, `DOCKER.md`. Một lệnh: `docker compose up --build`.
+
+**Chưa commit:** toàn bộ BE/, FE/, docker-compose.yml, DOCKER.md + đợt Merit LLM-judge.
+
+---
+
+## 2026-06-10 — Chatbot RAG (dùng thực) ✅
+
+- **BE** `POST /api/v1/chat` (`chat_service.py` + `routers/chat.py`): retrieve top-k từ `day10_kb` →
+  LLM (gpt-4o-mini, OPENAI_API_KEY trong .env) trả lời dựa trên context; fallback extractive nếu thiếu key.
+  Trả `answer` + `sources` (doc_id/effective_date/run_id) để trích dẫn.
+- Test thật: "hoàn tiền" → "7 ngày làm việc" (policy_refund_v4); "phép năm <3 năm" → "12 ngày"
+  (hr_leave_policy); "Level 4 Admin" → "IT Manager và CISO" (access_control_sop). Đúng version đã publish.
+- **FE** trang `Chatbot` (`views/pages/Chat.jsx` + `useChat.js` + `ChatModel`): khung chat bong bóng,
+  câu gợi ý, chip nguồn, typing indicator. Verify render + trả lời thật qua Playwright.
+- Lưu ý Docker: chat cần `OPENAI_API_KEY` → thêm vào `environment` service `be` (không có key vẫn chạy chế độ trích dẫn).
+
+---
+
+## 2026-06-10 — Chat: file viewer + So sánh Before/After ✅
+
+- **BE API 7** `GET /api/v1/docs/{doc_id}`: trả nội dung file gốc `data/docs/{doc_id}.txt` (404 cho nguồn nhiễu).
+- **BE** `POST /api/v1/chat/compare`: inject → hỏi → rerun sạch → hỏi; trả 2 đáp án + run_id +
+  `data_has_stale` (quét **cleaned CSV** — tín hiệu data-layer tin cậy, không phụ thuộc cache vector).
+  Test: BEFORE `data_has_stale=['14 ngày làm việc']` vs AFTER `[]`. `chat()` cũng thêm cờ `context_stale`.
+- **FE**: chip nguồn 📄 **click được** → `Modal`/`FileViewerModal` hiện nội dung file gốc, **highlight** số
+  trong câu trả lời (vd "7 ngày làm việc"). Verify qua Playwright (modal mở, highlight đúng).
+- **FE**: nút **⚖ So sánh Before/After** — panel split 2 thẻ (đỏ "data còn stale" vs xanh "data sạch") + run_id.
+- File mới FE: `controllers/useFileViewer.js`, `views/components/Modal.jsx`, `FileViewerModal.jsx`;
+  `useChat` thêm compare; `chat_service` thêm `compare`/`_scan_cleaned_stale`/`STALE_MARKERS`.

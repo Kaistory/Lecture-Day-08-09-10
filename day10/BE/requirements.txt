@@ -1,0 +1,5 @@
+# BE Orchestrator — Lab Day 10
+# Chạy chung venv với lab (đã có chromadb, sentence-transformers, python-dotenv, uvicorn).
+# Chỉ cần thêm FastAPI:
+fastapi>=0.110.0
+uvicorn[standard]>=0.27.0

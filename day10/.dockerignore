@@ -1,0 +1,12 @@
+# Build context = day10/ (cho BE/Dockerfile). Loại file nặng/bí mật.
+**/.venv/
+**/__pycache__/
+**/*.pyc
+lab/.env
+lab/chroma_db/
+lab/artifacts/
+FE/node_modules/
+FE/dist/
+.git/
+**/.pytest_cache/
+**/*.log

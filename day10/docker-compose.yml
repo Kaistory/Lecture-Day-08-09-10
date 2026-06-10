@@ -1,0 +1,46 @@
+# Day 10 — Data Pipeline Orchestrator (BE) + Dashboard (FE)
+#   docker compose up --build
+# BE:  http://localhost:8000/docs   ·   FE: http://localhost:3000
+services:
+  be:
+    build:
+      context: .
+      dockerfile: BE/Dockerfile
+    image: day10-be
+    ports:
+      - "8000:8000"
+    environment:
+      - CHROMA_DB_PATH=/app/lab/chroma_db
+      - CHROMA_COLLECTION=day10_kb
+      - EMBEDDING_MODEL=paraphrase-multilingual-MiniLM-L12-v2
+      - FRESHNESS_SLA_HOURS=24
+      - HF_HUB_DISABLE_SYMLINKS_WARNING=1
+      # Chatbot RAG: truyền key từ env host (không có key → chat chạy chế độ trích dẫn extractive)
+      - OPENAI_API_KEY=${OPENAI_API_KEY:-}
+    volumes:
+      # Giữ index + artifact bền vững (và chia sẻ với lab CLI trên host nếu muốn)
+      - ./lab/chroma_db:/app/lab/chroma_db
+      - ./lab/artifacts:/app/lab/artifacts
+      # Cache model HuggingFace để không tải lại ~470MB mỗi lần rebuild
+      - hf-cache:/root/.cache/huggingface
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request,sys; sys.exit(0 if urllib.request.urlopen('http://localhost:8000/health').status==200 else 1)"]
+      interval: 15s
+      timeout: 5s
+      retries: 5
+      start_period: 40s
+
+  fe:
+    build:
+      context: ./FE
+      args:
+        # URL mà TRÌNH DUYỆT (trên host) gọi tới BE — qua cổng publish 8000
+        VITE_API_BASE_URL: http://localhost:8000
+    image: day10-fe
+    ports:
+      - "3000:80"
+    depends_on:
+      - be
+
+volumes:
+  hf-cache:

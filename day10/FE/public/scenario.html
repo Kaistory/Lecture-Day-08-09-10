@@ -1,0 +1,174 @@
+<!doctype html>
+<html lang="vi">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>Kịch bản Demo · Day 10 Data Pipeline</title>
+<style>
+  :root{
+    --bg:#0b0f17;--bg2:#111726;--bg3:#1a2336;--panel:#131a29;--border:#243049;
+    --text:#e6edf6;--dim:#8a98b0;--accent:#4f8cff;--accent2:#7c5cff;
+    --ok:#2ecc71;--fail:#ff4d5e;--warn:#f6b73c;
+  }
+  *{box-sizing:border-box}
+  body{margin:0;background:var(--bg);color:var(--text);
+    font-family:'Segoe UI',system-ui,-apple-system,sans-serif;line-height:1.65;font-size:15px}
+  .wrap{max-width:980px;margin:0 auto;padding:40px 24px 80px}
+  a{color:var(--accent);text-decoration:none}
+  .topnav{display:flex;align-items:center;gap:14px;margin-bottom:28px}
+  .topnav .btn{border:1px solid var(--border);background:var(--bg3);color:var(--text);
+    padding:8px 14px;border-radius:8px;font-weight:600;font-size:14px}
+  h1{font-size:30px;margin:0 0 6px;background:linear-gradient(90deg,var(--accent),var(--accent2));
+    -webkit-background-clip:text;background-clip:text;-webkit-text-fill-color:transparent}
+  h2{font-size:21px;margin:38px 0 10px;border-left:4px solid var(--accent);padding-left:12px}
+  h3{font-size:16px;margin:20px 0 8px;color:var(--text)}
+  .sub{color:var(--dim);margin:0 0 8px}
+  .mono{font-family:'Cascadia Code','Consolas',monospace}
+  .panel{background:var(--panel);border:1px solid var(--border);border-radius:12px;padding:20px;margin:14px 0}
+  .grid{display:grid;gap:14px}
+  .cols-2{grid-template-columns:1fr 1fr}
+  .cols-3{grid-template-columns:repeat(3,1fr)}
+  table{width:100%;border-collapse:collapse;margin:6px 0}
+  th,td{text-align:left;padding:9px 11px;border-bottom:1px solid var(--border);font-size:13.5px;vertical-align:top}
+  th{color:var(--dim);text-transform:uppercase;font-size:11.5px;letter-spacing:.5px}
+  .tag{display:inline-block;font-size:11px;padding:2px 8px;border-radius:5px;background:var(--bg3);color:var(--dim)}
+  .badge{display:inline-block;font-size:11.5px;font-weight:700;padding:2px 9px;border-radius:999px}
+  .b-ok{color:var(--ok);background:rgba(46,204,113,.13)}
+  .b-fail{color:var(--fail);background:rgba(255,77,94,.13)}
+  .b-warn{color:var(--warn);background:rgba(246,183,60,.13)}
+  .flow{display:flex;align-items:center;gap:8px;flex-wrap:wrap;margin:10px 0;font-weight:600}
+  .flow .node{background:var(--bg3);border:1px solid var(--border);border-radius:8px;padding:8px 13px}
+  .flow .arr{color:var(--accent)}
+  .src{border-left:3px solid var(--accent2)}
+  code{background:#06090f;border:1px solid var(--border);border-radius:5px;padding:1px 6px;font-family:'Cascadia Code','Consolas',monospace;font-size:13px}
+  pre{background:#06090f;border:1px solid var(--border);border-radius:9px;padding:14px 16px;overflow:auto;
+    font-family:'Cascadia Code','Consolas',monospace;font-size:12.5px;line-height:1.6}
+  .pre-ok{color:var(--ok)} .pre-fail{color:var(--fail)} .pre-dim{color:var(--dim)}
+  .callout{border:1px solid var(--border);border-left:4px solid var(--warn);background:rgba(246,183,60,.06);
+    border-radius:8px;padding:12px 16px;margin:14px 0}
+  .muted{color:var(--dim)}
+  hr{border:none;border-top:1px solid var(--border);margin:30px 0}
+  .step-num{display:inline-grid;place-items:center;width:26px;height:26px;border-radius:50%;
+    background:var(--accent);color:#fff;font-weight:700;font-size:13px;margin-right:8px}
+</style>
+</head>
+<body>
+<div class="wrap">
+
+  <div class="topnav">
+    <a class="btn" href="/">← Về Dashboard</a>
+    <span class="muted">·</span>
+    <a class="btn" href="http://localhost:8000/docs" target="_blank">BE Swagger ↗</a>
+  </div>
+
+  <h1>Kịch bản Demo — Data Pipeline & Observability</h1>
+  <p class="sub">Lab Day 10 · luồng <span class="mono">ingest → clean → validate → embed</span> với bằng chứng before/after khớp <span class="mono">run_id</span>.</p>
+
+  <!-- 1 -->
+  <h2>1 · Use case &amp; Nguồn dữ liệu (DB / API / File)</h2>
+  <div class="panel">
+    <p><b>Use case:</b> Một AI Agent (CS + IT Helpdesk, nối tiếp Day 08/09) trả lời nhân viên/khách hàng dựa trên
+    knowledge base. Agent chỉ đúng nếu <b>tầng dữ liệu</b> phía sau publish đúng <b>version hiện hành</b> — không lẫn
+    chính sách cũ (refund 14 ngày, HR 10 ngày phép). Pipeline này là lớp ingest → clean → validate → embed đứng
+    <i>trước</i> agent.</p>
+
+    <h3>5 hệ thống nguồn (mô phỏng export về 1 CSV thô)</h3>
+    <table>
+      <thead><tr><th>doc_id</th><th>Loại nguồn</th><th>Use case agent</th><th>Bẫy dữ liệu</th></tr></thead>
+      <tbody>
+        <tr class="src"><td class="mono">policy_refund_v4</td><td>File export (CS policy .txt/PDF)</td><td>Hoàn tiền bao nhiêu ngày?</td><td>chunk stale "14 ngày" (đúng = 7)</td></tr>
+        <tr class="src"><td class="mono">sla_p1_2026</td><td>SLA system (PDF/DB)</td><td>SLA P1, escalation?</td><td>phân mảnh, chunk nhiễu</td></tr>
+        <tr class="src"><td class="mono">it_helpdesk_faq</td><td>Helpdesk API</td><td>Khoá tài khoản, VPN?</td><td>trùng lặp + meta-leak</td></tr>
+        <tr class="src"><td class="mono">hr_leave_policy</td><td>HR DB (versioned)</td><td>Phép năm bao nhiêu ngày?</td><td>xung đột version 2025 (10) vs 2026 (12)</td></tr>
+        <tr class="src"><td class="mono">access_control_sop</td><td>File SOP nội bộ</td><td>Ai duyệt Level 4?</td><td>bị baseline bỏ sót khỏi allowlist</td></tr>
+      </tbody>
+    </table>
+    <p class="muted">+ nhiễu/legacy: <span class="mono">legacy_catalog_*</span>, <span class="mono">invalid_doc_*</span>,
+    <span class="mono">data_privacy_guideline</span>, <span class="mono">security_policy</span> → quarantine có chủ đích.</p>
+    <div class="flow">
+      <span class="node">DB / API / File ×5</span><span class="arr">→</span>
+      <span class="node">CSV export thô (247 dòng)</span><span class="arr">→</span>
+      <span class="node">Pipeline</span><span class="arr">→</span>
+      <span class="node">ChromaDB <span class="mono">day10_kb</span></span><span class="arr">→</span>
+      <span class="node">Agent</span>
+    </div>
+  </div>
+
+  <!-- 2 -->
+  <h2>2 · Inject corruption → quan sát qua Freshness / Volume / Log</h2>
+  <div class="panel">
+    <p>Cố ý làm hỏng để chứng minh observability bắt được lỗi <b>trước khi</b> agent trả lời sai:</p>
+    <pre>POST /api/v1/pipeline/run
+{ "run_id": "inject-bad", "flags": { "no_refund_fix": true, "skip_validate": true } }</pre>
+    <table>
+      <thead><tr><th>Tín hiệu trên Dashboard / Log</th><th>Sạch (run chuẩn)</th><th>Khi inject</th></tr></thead>
+      <tbody>
+        <tr><td><b>Volume</b> — quarantine_records</td><td>215</td><td>215 (nhưng embed chunk "14 ngày")</td></tr>
+        <tr><td><b>Validation</b> — expectation</td><td><span class="badge b-ok">8/8 PASS</span></td><td><span class="badge b-fail">refund_no_stale_14d_window FAIL</span></td></tr>
+        <tr><td><b>Freshness</b></td><td><span class="badge b-fail">FAIL (data cũ 60 ngày)</span></td><td>FAIL (không che được lỗi version)</td></tr>
+        <tr><td><b>Eval</b> — q_refund_window.hits_forbidden</td><td><span class="badge b-ok">no</span></td><td><span class="badge b-fail">yes</span></td></tr>
+      </tbody>
+    </table>
+    <div class="callout">Trên <b>Pipeline Runner</b>: node <b>Validation</b> chuyển đỏ + xổ terminal log
+    <code>expectation[refund_no_stale_14d_window] FAIL (halt) :: violations=1</code>. Trên <b>Observability</b>:
+    volume quarantine + freshness phản ánh "sức khỏe" dữ liệu. Đây là cách lỗi lộ ra qua <i>metric</i>, không phải khi user phàn nàn.</div>
+  </div>
+
+  <!-- 3 -->
+  <h2>3 · Rerun pipeline idempotent → Expectation PASS</h2>
+  <div class="panel">
+    <p>Chạy lại pipeline chuẩn. Embed <b>idempotent</b> nên index tự lành mà không nhân đôi vector:</p>
+    <ul>
+      <li><b>Upsert theo <span class="mono">chunk_id</span></b> = <code>sha256(doc_id|chunk_text|seq)[:16]</code> → cùng nội dung ⇒ cùng id, ghi đè thay vì thêm.</li>
+      <li><b>Prune</b>: xoá id không còn trong cleaned hiện tại ⇒ chunk "14 ngày" bị loại khỏi index (snapshot = publish mới nhất).</li>
+    </ul>
+    <pre>POST /api/v1/pipeline/run   { "flags": {} }
+<span class="pre-ok">expectation[refund_no_stale_14d_window] OK (halt) :: violations=0
+expectation[hr_leave_no_stale_10d_annual] OK (halt) :: violations=0
+... 8/8 PASS → PIPELINE_OK (exit 0)</span></pre>
+    <p class="muted">Chạy 2 lần liên tiếp cho cùng kết quả (raw=247, cleaned=32, quarantine=215) — đó là tính <b>idempotent</b>.</p>
+  </div>
+
+  <!-- 4 -->
+  <h2>4 · So sánh câu trả lời Agent Trước / Sau — khớp <span class="mono">run_id</span></h2>
+  <div class="panel">
+    <p>Cùng câu hỏi <i>"Khách có bao nhiêu ngày để yêu cầu hoàn tiền?"</i> → context retrieve từ index ở 2 thời điểm:</p>
+    <div class="grid cols-2">
+      <div class="panel" style="margin:0;border-left:4px solid var(--fail)">
+        <div class="tag">BEFORE · run_id <span class="mono">inject-bad</span></div>
+        <h3 style="margin-top:8px">❌ Agent: "tối đa <b>14 ngày</b>"</h3>
+        <p class="muted">eval <span class="mono">eval_inject_bad.csv</span> · q_refund_window
+        <span class="badge b-fail">hits_forbidden = yes</span></p>
+      </div>
+      <div class="panel" style="margin:0;border-left:4px solid var(--ok)">
+        <div class="tag">AFTER · run_id <span class="mono">run_2026…</span></div>
+        <h3 style="margin-top:8px">✅ Agent: "tối đa <b>7 ngày làm việc</b>"</h3>
+        <p class="muted">eval <span class="mono">after_fix_eval.csv</span> · q_refund_window
+        <span class="badge b-ok">hits_forbidden = no</span> · grading <span class="badge b-ok">10/10</span></p>
+      </div>
+    </div>
+
+    <h3>Chuỗi bằng chứng khớp <span class="mono">run_id</span></h3>
+    <p>Mỗi <span class="mono">run_id</span> nối liền log → cleaned CSV → quarantine CSV → manifest → vector metadata → eval/grading.
+    Lineage truy vết được:</p>
+    <table>
+      <thead><tr><th>Artifact</th><th>Đường dẫn (theo run_id)</th></tr></thead>
+      <tbody>
+        <tr><td>Manifest</td><td class="mono">/api/v1/artifacts/manifests/manifest_&lt;run_id&gt;.json</td></tr>
+        <tr><td>Quarantine</td><td class="mono">/api/v1/artifacts/quarantine/quarantine_&lt;run_id&gt;.csv</td></tr>
+        <tr><td>Cleaned</td><td class="mono">/api/v1/artifacts/cleaned/cleaned_&lt;run_id&gt;.csv</td></tr>
+        <tr><td>Eval / Grading</td><td class="mono">/api/v1/artifacts/eval/grading_run.jsonl</td></tr>
+      </tbody>
+    </table>
+    <div class="callout" style="border-left-color:var(--ok);background:rgba(46,204,113,.06)">
+      <span class="mono">run_id</span> trong manifest == metadata vector embed == file eval ⇒ chứng minh câu trả lời "sau" thực sự đến từ index đã fix, không phải ngẫu nhiên.
+    </div>
+  </div>
+
+  <hr/>
+  <p class="muted">Tài liệu tĩnh phục vụ demo/báo cáo. Mở <a href="/">Dashboard</a> để chạy trực tiếp từng bước,
+  hoặc <a href="http://localhost:8000/docs" target="_blank">Swagger</a> để gọi API.</p>
+
+</div>
+</body>
+</html>

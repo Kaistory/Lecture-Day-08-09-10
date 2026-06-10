@@ -6,3 +6,6 @@ chromadb>=0.4.22
 sentence-transformers>=2.6.0
 pyyaml>=6.0.1
 pytest>=8.0.0
+
+# Tuỳ chọn (Merit) — LLM-judge eval. Chỉ cần khi chạy eval_llm_judge.py.
+openai>=1.40.0

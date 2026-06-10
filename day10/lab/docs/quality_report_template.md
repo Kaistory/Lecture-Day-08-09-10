@@ -73,6 +73,9 @@ contains "12 ngày" = yes, hits_forbidden ("10 ngày phép năm") = no. Trước
 
 ## 5. Hạn chế & việc chưa làm
 
-- Eval là keyword-match trên top-k (chưa có LLM-judge); chỉ đo "context có/không chứa", chưa đo chất lượng câu trả lời cuối.
+- **Đã mở rộng LLM-judge (Merit):** `eval_llm_judge.py` (RAG answer + LLM giám khảo, model `gpt-4o-mini`)
+  → **10/10 pass, score trung bình 5/5, faithful=True** (`artifacts/eval/llm_judge.jsonl`). Xác nhận
+  tầng dữ liệu đúng end-to-end (vd refund "7 ngày", escalation "10 phút", HR "12 ngày"), không chỉ keyword.
+- Keyword-match (eval_retrieval/grading_run) vẫn giữ làm gate nhanh & rẻ; LLM-judge bổ sung đo chất lượng câu trả lời.
 - Freshness dùng SLA tĩnh 24h không hợp với dữ liệu lab cố định → cần phân biệt "tuổi dữ liệu nguồn" vs "tuổi lần publish".
 - Rule corruption (lặp từ/meta-leak) dựa trên heuristic; corpus thật cần kiểm thử rộng hơn để tránh false-positive.

@@ -105,6 +105,7 @@ grading 10/10), collection này có thể thay nguồn retrieval cho multi-agent
 ## 6. Rủi ro còn lại & việc chưa làm
 
 - Freshness SLA tĩnh 24h không hợp dữ liệu lab cố định → cần tách tuổi-nguồn vs tuổi-publish.
-- Eval keyword-match top-k, chưa có LLM-judge đo chất lượng câu trả lời cuối.
+- Đã thêm **LLM-judge (Merit)** `eval_llm_judge.py` (gpt-4o-mini, RAG answer + judge) → 10/10 pass,
+  score 5/5, faithful=True (`artifacts/eval/llm_judge.jsonl`); keyword-match vẫn giữ làm gate nhanh.
 - Rule corruption (lặp từ/meta-leak) là heuristic → cần kiểm thử rộng tránh false-positive.
 - Embedder multilingual nặng hơn; cân nhắc cache/model nhỏ hơn nếu cần tốc độ.
