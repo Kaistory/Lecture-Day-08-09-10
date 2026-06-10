@@ -3,6 +3,9 @@ import { useEffect, useRef, useState } from 'react'
 import { useChat } from '../../controllers/useChat.js'
 import { useFileViewer } from '../../controllers/useFileViewer.js'
 import FileViewerModal from '../components/FileViewerModal.jsx'
+import Modal from '../components/Modal.jsx'
+import CsvTable from '../components/CsvTable.jsx'
+import { ArtifactsModel } from '../../models/api.js'
 
 const SUGGESTIONS = [
   'Khách có bao nhiêu ngày để yêu cầu hoàn tiền?',
@@ -41,8 +44,9 @@ function Sources({ sources, answer, onOpen }) {
   )
 }
 
-function CompareCard({ side, label, color, data }) {
+function CompareCard({ label, color, data, onViewCleaned }) {
   const stale = data?.data_has_stale || []
+  const file = data?.run_id ? `cleaned_${data.run_id}.csv` : null
   return (
     <div className="panel" style={{ margin: 0, borderLeft: `4px solid ${color}` }}>
       <div className="tag" style={{ marginBottom: 6 }}>{label} · run_id <span className="mono">{data?.run_id}</span></div>
@@ -53,6 +57,13 @@ function CompareCard({ side, label, color, data }) {
           : <span className="badge ok">🛡 data sạch</span>}
         <span className="tag">quarantine: {data?.quarantine_records}</span>
       </div>
+      {file && (
+        <div className="file-item" style={{ marginTop: 10, marginBottom: 0 }}>
+          <span className="fi-ico" style={{ cursor: 'pointer' }} title="Xem cleaned CSV" onClick={() => onViewCleaned(file)}>✨</span>
+          <div className="grow mono" style={{ cursor: 'pointer', fontSize: 12 }} onClick={() => onViewCleaned(file)}>{file}</div>
+          <button className="btn ghost" onClick={() => onViewCleaned(file)}>👁 Xem</button>
+        </div>
+      )}
     </div>
   )
 }
@@ -63,7 +74,17 @@ export default function Chat() {
   const [text, setText] = useState('')
   const [showCompare, setShowCompare] = useState(false)
   const [cmpText, setCmpText] = useState(SUGGESTIONS[0])
+  const [csvPreview, setCsvPreview] = useState(null) // {filename, content, loading, error}
   const logRef = useRef(null)
+
+  const openCleaned = async (filename) => {
+    setCsvPreview({ filename, loading: true })
+    try {
+      setCsvPreview({ filename, content: await ArtifactsModel.fetchText('cleaned', filename) })
+    } catch (e) {
+      setCsvPreview({ filename, error: e.message })
+    }
+  }
 
   useEffect(() => {
     if (logRef.current) logRef.current.scrollTop = logRef.current.scrollHeight
@@ -74,6 +95,14 @@ export default function Chat() {
   return (
     <div>
       <FileViewerModal viewer={viewer} />
+      {csvPreview && (
+        <Modal title={<span>✨ {csvPreview.filename}</span>} subtitle={`artifacts/cleaned/${csvPreview.filename}`}
+          onClose={() => setCsvPreview(null)}>
+          {csvPreview.loading && <div className="muted">Đang tải nội dung…</div>}
+          {csvPreview.error && <div className="err">⚠ {csvPreview.error}</div>}
+          {csvPreview.content != null && <CsvTable text={csvPreview.content} />}
+        </Modal>
+      )}
 
       <div className="row between">
         <div>
@@ -100,8 +129,8 @@ export default function Chat() {
           {comparing && <p className="muted">Inject corruption → hỏi → rerun idempotent → hỏi. Mất ~15–30s (2 lần embed + 2 LLM)…</p>}
           {comparison && (
             <div className="split">
-              <CompareCard label="① BEFORE (inject)" color="var(--fail)" data={comparison.before} />
-              <CompareCard label="② AFTER (sạch)" color="var(--ok)" data={comparison.after} />
+              <CompareCard label="① BEFORE (inject)" color="var(--fail)" data={comparison.before} onViewCleaned={openCleaned} />
+              <CompareCard label="② AFTER (sạch)" color="var(--ok)" data={comparison.after} onViewCleaned={openCleaned} />
             </div>
           )}
           {comparison && (

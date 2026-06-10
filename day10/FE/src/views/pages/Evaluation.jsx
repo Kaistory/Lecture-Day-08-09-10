@@ -1,11 +1,22 @@
 // VIEW — Evaluation & Grading (Sprint 3 & 4).
+import { useState } from 'react'
 import { useEval } from '../../controllers/useEval.js'
 import ScoreRing from '../components/ScoreRing.jsx'
 import Confetti from '../components/Confetti.jsx'
 import StatusBadge from '../components/StatusBadge.jsx'
 import MetricCard from '../components/MetricCard.jsx'
+import Modal from '../components/Modal.jsx'
+import CsvTable from '../components/CsvTable.jsx'
+import { ArtifactsModel } from '../../models/api.js'
 
-function EvalPanel({ title, hint, data, onRun, busy }) {
+// "/api/v1/artifacts/eval/after_fix_eval.csv" -> { type:'eval', filename:'after_fix_eval.csv' }
+function parseReportUrl(url = '') {
+  const parts = url.split('/').filter(Boolean)
+  return { type: parts[parts.length - 2], filename: parts[parts.length - 1] }
+}
+
+function EvalPanel({ title, hint, data, onRun, busy, onView }) {
+  const report = data?.report_url ? parseReportUrl(data.report_url) : null
   return (
     <div className="panel">
       <div className="row between" style={{ marginBottom: 8 }}>
@@ -24,6 +35,17 @@ function EvalPanel({ title, hint, data, onRun, busy }) {
             <span className="k">avg_contains_expected</span><span className="mono">{data.metrics?.avg_contains_expected ?? '—'}</span>
             <span className="k">avg_hits_forbidden</span><span className="mono" style={{ color: data.metrics?.avg_hits_forbidden > 0 ? 'var(--fail)' : 'var(--ok)' }}>{data.metrics?.avg_hits_forbidden ?? '—'}</span>
           </div>
+          {report && (
+            <div className="file-item" style={{ marginTop: 12, marginBottom: 0 }}>
+              <span className="fi-ico" style={{ cursor: 'pointer' }} title="Xem nội dung" onClick={() => onView(report)}>📊</span>
+              <div className="grow" style={{ cursor: 'pointer' }} onClick={() => onView(report)}>
+                <div className="mono">{report.filename}</div>
+                <div className="muted" style={{ fontSize: 12 }}>file report eval</div>
+              </div>
+              <button className="btn ghost" onClick={() => onView(report)}>👁 Xem</button>
+              <a className="btn" href={ArtifactsModel.url(report.type, report.filename)} download>⬇</a>
+            </div>
+          )}
         </>
       ) : <p className="muted">Chưa có dữ liệu — bấm Capture.</p>}
     </div>
@@ -33,20 +55,39 @@ function EvalPanel({ title, hint, data, onRun, busy }) {
 export default function Evaluation() {
   const { before, after, grading, busy, error, runRetrieval, runGrading } = useEval()
   const allPassed = grading?.all_passed
+  const [preview, setPreview] = useState(null) // {type, filename, content, loading, error}
+
+  const openReport = async ({ type, filename }) => {
+    setPreview({ type, filename, loading: true })
+    try {
+      const content = await ArtifactsModel.fetchText(type, filename)
+      setPreview({ type, filename, content })
+    } catch (e) {
+      setPreview({ type, filename, error: e.message })
+    }
+  }
 
   return (
     <div>
       <Confetti fire={!!allPassed} />
+      {preview && (
+        <Modal title={<span>📊 {preview.filename}</span>} subtitle={`artifacts/${preview.type}/${preview.filename}`}
+          onClose={() => setPreview(null)}>
+          {preview.loading && <div className="muted">Đang tải nội dung…</div>}
+          {preview.error && <div className="err">⚠ {preview.error}</div>}
+          {preview.content != null && <CsvTable text={preview.content} />}
+        </Modal>
+      )}
       <h1 className="page-title">Evaluation & Grading</h1>
-      <p className="page-sub">So sánh Before/After (Sprint 3) và chấm 10 câu chính thức (Sprint 4).</p>
+      <p className="page-sub">So sánh Before/After (Sprint 3) và chấm 10 câu chính thức (Sprint 4). Bấm file report để xem nội dung.</p>
 
       {error && <div className="err" style={{ marginBottom: 16 }}>⚠ {error}</div>}
 
       <div className="split" style={{ marginBottom: 18 }}>
         <EvalPanel title="① Before Fix (inject)" hint="Chạy sau khi inject corruption ở Pipeline Runner."
-          data={before} busy={busy === 'before'} onRun={() => runRetrieval('before', 'eval_inject_bad.csv')} />
+          data={before} busy={busy === 'before'} onRun={() => runRetrieval('before', 'eval_inject_bad.csv')} onView={openReport} />
         <EvalPanel title="② After Fix" hint="Chạy sau khi pipeline chuẩn (index sạch)."
-          data={after} busy={busy === 'after'} onRun={() => runRetrieval('after', 'after_fix_eval.csv')} />
+          data={after} busy={busy === 'after'} onRun={() => runRetrieval('after', 'after_fix_eval.csv')} onView={openReport} />
       </div>
 
       <div className="panel">
